@@ -397,11 +397,10 @@ function Activities() {
 // ─── BUDGET ───────────────────────────────────────────────────────────────────
 function Budget() {
   const [nights, setNights] = useState(3)
-  const [people, setPeople] = useState(2)
   const [items, setItems] = useState(BUDGET_ITEMS_DEFAULT.map(i => ({ ...i })))
 
   const update = (idx, val) => setItems(prev => prev.map((item, i) => i === idx ? { ...item, val: Number(val) || 0 } : item))
-  const total = items.reduce((acc, item) => acc + (item.isPerNight ? item.val * nights * people : item.val * people), 0)
+  const total = items.reduce((acc, item) => acc + (item.isPerNight ? item.val * nights : item.val), 0)
 
   return (
     <section className="section sec-alt" id="budget">
@@ -413,17 +412,15 @@ function Budget() {
         </div>
         <div className="budget-layout">
           <div className="card">
-            <div className="budget-controls">
-              {[['nights', '🌙 Nights', nights, setNights], ['people', '👤 People', people, setPeople]].map(([key, label, val, set]) => (
-                <div key={key} className="bc-item">
-                  <span className="bc-label">{label}</span>
-                  <div className="stepper">
-                    <button onClick={() => set(v => Math.max(1, v - 1))}>−</button>
-                    <span className="stepper-val">{val}</span>
-                    <button onClick={() => set(v => v + 1)}>+</button>
-                  </div>
+            <div className="budget-controls" style={{ gridTemplateColumns: '1fr' }}>
+              <div className="bc-item">
+                <span className="bc-label">🌙 Nights</span>
+                <div className="stepper">
+                  <button onClick={() => setNights(v => Math.max(1, v - 1))}>−</button>
+                  <span className="stepper-val">{nights}</span>
+                  <button onClick={() => setNights(v => v + 1)}>+</button>
                 </div>
-              ))}
+              </div>
             </div>
             <div className="budget-rows">
               {items.map((item, i) => (
@@ -441,7 +438,7 @@ function Budget() {
             <div className="card budget-result-card">
               <div className="br-label">Your Est. Total</div>
               <div className="br-num">${total.toLocaleString()}</div>
-              <div className="br-sub">for {nights} night{nights !== 1 ? 's' : ''} · {people} person{people !== 1 ? 's' : ''}</div>
+              <div className="br-sub">for {nights} night{nights !== 1 ? 's' : ''}</div>
             </div>
             <div className="budget-note">These are estimates. Vegas has a way of adjusting budgets upward. Plan accordingly. 😅</div>
           </div>
