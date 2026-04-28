@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from './supabase'
 import './App.css'
 
-// ─── CONSTANTS ────────────────────────────────────────────────────────────────
 const DEFAULT_HOTEL_OPTS = ['The Venetian', 'Bellagio', 'Caesars Palace', 'Resorts World']
 const DEFAULT_WEEKEND_OPTS = ['Feb 14-16', 'Feb 21-23', 'Mar 7-9']
 
@@ -99,7 +98,7 @@ function Hero({ onNav }) {
 }
 
 // ─── RSVP ─────────────────────────────────────────────────────────────────────
-function RSVP({ useMock }) {
+function RSVP() {
   const [attendees, setAttendees] = useState([])
   const [name, setName] = useState('')
   const [plusOne, setPlusOne] = useState('')
@@ -108,30 +107,22 @@ function RSVP({ useMock }) {
   const [submitting, setSubmitting] = useState(false)
 
   const fetchData = async () => {
-    if (useMock) return
     const { data } = await supabase.from('attendees').select('*').order('created_at', { ascending: true })
     if (data) setAttendees(data)
   }
 
   useEffect(() => {
     fetchData()
-    if (!useMock) {
-      const ch = supabase.channel('attendees-ch')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'attendees' }, fetchData)
-        .subscribe()
-      return () => supabase.removeChannel(ch)
-    }
-  }, [useMock])
+    const ch = supabase.channel('attendees-ch')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'attendees' }, fetchData)
+      .subscribe()
+    return () => supabase.removeChannel(ch)
+  }, [])
 
   const submit = async () => {
     if (!name.trim()) return
     setSubmitting(true)
-    const entry = { name: name.trim(), plus_one: plusOne.trim(), status }
-    if (useMock) {
-      setAttendees(prev => [...prev, { ...entry, id: Date.now(), created_at: new Date().toISOString() }])
-    } else {
-      await supabase.from('attendees').insert([entry])
-    }
+    await supabase.from('attendees').insert([{ name: name.trim(), plus_one: plusOne.trim(), status }])
     setName(''); setPlusOne(''); setStatus('in'); setDone(true); setSubmitting(false)
     setTimeout(() => setDone(false), 3000)
   }
@@ -140,7 +131,6 @@ function RSVP({ useMock }) {
   const maybes = attendees.filter(a => a.status === 'maybe')
   const outs = attendees.filter(a => a.status === 'out')
   const total = attendees.reduce((acc, a) => acc + 1 + (a.plus_one ? 1 : 0), 0)
-  const hasAny = attendees.length > 0
 
   const PersonRow = ({ person }) => (
     <div className="person-row">
@@ -168,14 +158,10 @@ function RSVP({ useMock }) {
         </div>
         <div className="rsvp-grid">
           <div className="rsvp-left">
-            {!hasAny && <div className="rsvp-empty">No RSVPs yet — be the first to lock in 🎰</div>}
-            {hasAny && (
-              <>
-                {ins.length > 0 && <div className="rsvp-group rg-in"><div className="rsvp-group-title">✅ In for sure</div>{ins.map(p => <PersonRow key={p.id} person={p} />)}</div>}
-                {maybes.length > 0 && <div className="rsvp-group rg-maybe"><div className="rsvp-group-title">🤔 On the fence</div>{maybes.map(p => <PersonRow key={p.id} person={p} />)}</div>}
-                {outs.length > 0 && <div className="rsvp-group rg-out"><div className="rsvp-group-title">❌ Can't make it</div>{outs.map(p => <PersonRow key={p.id} person={p} />)}</div>}
-              </>
-            )}
+            {attendees.length === 0 && <div className="rsvp-empty">No RSVPs yet — be the first to lock in 🎰</div>}
+            {ins.length > 0 && <div className="rsvp-group rg-in"><div className="rsvp-group-title">✅ In for sure</div>{ins.map(p => <PersonRow key={p.id} person={p} />)}</div>}
+            {maybes.length > 0 && <div className="rsvp-group rg-maybe"><div className="rsvp-group-title">🤔 On the fence</div>{maybes.map(p => <PersonRow key={p.id} person={p} />)}</div>}
+            {outs.length > 0 && <div className="rsvp-group rg-out"><div className="rsvp-group-title">❌ Can't make it</div>{outs.map(p => <PersonRow key={p.id} person={p} />)}</div>}
           </div>
           <div>
             <div className="card">
@@ -203,7 +189,7 @@ function RSVP({ useMock }) {
 }
 
 // ─── POLLS ────────────────────────────────────────────────────────────────────
-function Polls({ useMock }) {
+function Polls() {
   const [hotelOpts, setHotelOpts] = useState(DEFAULT_HOTEL_OPTS)
   const [weekendOpts, setWeekendOpts] = useState(DEFAULT_WEEKEND_OPTS)
   const [hotelVotes, setHotelVotes] = useState({})
@@ -216,55 +202,70 @@ function Polls({ useMock }) {
   const [editHotelOpts, setEditHotelOpts] = useState([])
   const [editWeekendOpts, setEditWeekendOpts] = useState([])
 
-  const fetchVotes = async () => {
-    if (useMock) return
+  const fetchAll = async () => {
+    // Votes
     const { data: hv } = await supabase.from('hotel_votes').select('option')
     const { data: wv } = await supabase.from('weekend_votes').select('option')
     if (hv) { const c = {}; hv.forEach(r => { c[r.option] = (c[r.option] || 0) + 1 }); setHotelVotes(c) }
     if (wv) { const c = {}; wv.forEach(r => { c[r.option] = (c[r.option] || 0) + 1 }); setWeekendVotes(c) }
+    // Poll options
+    const { data: ho } = await supabase.from('poll_options').select('*').eq('poll_type', 'hotel').order('sort_order')
+    const { data: wo } = await supabase.from('poll_options').select('*').eq('poll_type', 'weekend').order('sort_order')
+    if (ho && ho.length > 0) setHotelOpts(ho.map(o => o.label))
+    if (wo && wo.length > 0) setWeekendOpts(wo.map(o => o.label))
   }
 
   useEffect(() => {
-    fetchVotes()
-    if (!useMock) {
-      const ch = supabase.channel('votes-ch')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'hotel_votes' }, fetchVotes)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'weekend_votes' }, fetchVotes)
-        .subscribe()
-      return () => supabase.removeChannel(ch)
+    // Seed poll options if they don't exist yet
+    const seed = async () => {
+      const { data: existing } = await supabase.from('poll_options').select('id').limit(1)
+      if (!existing || existing.length === 0) {
+        await supabase.from('poll_options').insert([
+          ...DEFAULT_HOTEL_OPTS.map((label, i) => ({ poll_type: 'hotel', label, sort_order: i })),
+          ...DEFAULT_WEEKEND_OPTS.map((label, i) => ({ poll_type: 'weekend', label, sort_order: i })),
+        ])
+      }
+      fetchAll()
     }
-  }, [useMock])
+    seed()
+    const ch = supabase.channel('polls-ch')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'hotel_votes' }, fetchAll)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'weekend_votes' }, fetchAll)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'poll_options' }, fetchAll)
+      .subscribe()
+    return () => supabase.removeChannel(ch)
+  }, [])
 
   const submitVotes = async () => {
     if (!selHotel && !selWeekend) return
-    if (useMock) {
-      if (selHotel) setHotelVotes(prev => ({ ...prev, [selHotel]: (prev[selHotel] || 0) + 1 }))
-      if (selWeekend) setWeekendVotes(prev => ({ ...prev, [selWeekend]: (prev[selWeekend] || 0) + 1 }))
-      setSubmitted(true); return
-    }
     if (selHotel) await supabase.from('hotel_votes').insert([{ option: selHotel }])
     if (selWeekend) await supabase.from('weekend_votes').insert([{ option: selWeekend }])
     setSubmitted(true)
   }
 
-  const PollCard = ({ type, title, sub, opts, votes, selected, onSelect, editing, setEditing, editOpts, setEditOpts }) => {
+  const saveHotelOpts = async (newOpts) => {
+    await supabase.from('poll_options').delete().eq('poll_type', 'hotel')
+    await supabase.from('poll_options').insert(newOpts.map((label, i) => ({ poll_type: 'hotel', label, sort_order: i })))
+    setEditingHotel(false)
+  }
+
+  const saveWeekendOpts = async (newOpts) => {
+    await supabase.from('poll_options').delete().eq('poll_type', 'weekend')
+    await supabase.from('poll_options').insert(newOpts.map((label, i) => ({ poll_type: 'weekend', label, sort_order: i })))
+    setEditingWeekend(false)
+  }
+
+  const PollCard = ({ title, sub, opts, votes, selected, onSelect, editing, setEditing, editOpts, setEditOpts, onSave }) => {
     const total = Object.values(votes).reduce((a, b) => a + b, 0) || 1
     const maxV = Math.max(...Object.values(votes), 1)
-
-    const startEdit = () => { setEditOpts([...opts]); setEditing(true) }
-    const saveEdit = () => {
-      const valid = editOpts.map(o => o.trim()).filter(Boolean)
-      if (!valid.length) return
-      if (type === 'hotel') setHotelOpts(valid)
-      else setWeekendOpts(valid)
-      setEditing(false)
-    }
-
     return (
       <div className="card">
         <div className="poll-heading">{title}</div>
         <div className="poll-sub">{sub}</div>
-        <span className="edit-toggle" onClick={() => editing ? saveEdit() : startEdit()}>
+        <span className="edit-toggle" onClick={() => {
+          if (editing) { const valid = editOpts.map(o => o.trim()).filter(Boolean); if (valid.length) onSave(valid) }
+          else { setEditOpts([...opts]); setEditing(true) }
+        }}>
           {editing ? '✅ Save options' : '✏️ Edit options'}
         </span>
         {editing ? (
@@ -309,14 +310,14 @@ function Polls({ useMock }) {
           <p className="section-sub">Where are we staying? When are we going? Democracy decides.</p>
         </div>
         <div className="polls-grid">
-          <PollCard type="hotel" title="🏨 Hotel Pick" sub="Where are we posting up?"
+          <PollCard title="🏨 Hotel Pick" sub="Where are we posting up?"
             opts={hotelOpts} votes={hotelVotes} selected={selHotel} onSelect={setSelHotel}
             editing={editingHotel} setEditing={setEditingHotel}
-            editOpts={editHotelOpts} setEditOpts={setEditHotelOpts} />
-          <PollCard type="weekend" title="📅 Weekend Pick" sub="When works best for the crew?"
+            editOpts={editHotelOpts} setEditOpts={setEditHotelOpts} onSave={saveHotelOpts} />
+          <PollCard title="📅 Weekend Pick" sub="When works best for the crew?"
             opts={weekendOpts} votes={weekendVotes} selected={selWeekend} onSelect={setSelWeekend}
             editing={editingWeekend} setEditing={setEditingWeekend}
-            editOpts={editWeekendOpts} setEditOpts={setEditWeekendOpts} />
+            editOpts={editWeekendOpts} setEditOpts={setEditWeekendOpts} onSave={saveWeekendOpts} />
         </div>
         <div className="polls-submit">
           <button className="btn btn-neon" onClick={submitVotes} disabled={submitted || (!selHotel && !selWeekend)}>
@@ -330,22 +331,42 @@ function Polls({ useMock }) {
 
 // ─── ACTIVITIES ───────────────────────────────────────────────────────────────
 function Activities() {
-  const [acts, setActs] = useState(DEFAULT_ACTIVITIES)
+  const [acts, setActs] = useState([])
   const [activeTag, setActiveTag] = useState('all')
   const [newTitle, setNewTitle] = useState('')
   const [newDesc, setNewDesc] = useState('')
   const [newTag, setNewTag] = useState('sports')
 
+  const fetchActs = async () => {
+    const { data } = await supabase.from('activities').select('*').order('created_at', { ascending: true })
+    if (data && data.length > 0) {
+      setActs(data)
+    } else {
+      const { data: seeded } = await supabase.from('activities').insert(DEFAULT_ACTIVITIES).select()
+      if (seeded) setActs(seeded)
+    }
+  }
+
+  useEffect(() => {
+    fetchActs()
+    const ch = supabase.channel('activities-ch')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'activities' }, fetchActs)
+      .subscribe()
+    return () => supabase.removeChannel(ch)
+  }, [])
+
   const filtered = activeTag === 'all' ? acts : acts.filter(a => a.tag === activeTag)
   const tags = ['all', ...Object.keys(TAG_COLORS)]
 
-  const addIdea = () => {
+  const addIdea = async () => {
     if (!newTitle.trim()) return
-    setActs(prev => [...prev, { emoji: TAG_EMOJIS[newTag], title: newTitle.trim(), desc: newDesc.trim(), tag: newTag }])
+    await supabase.from('activities').insert([{ emoji: TAG_EMOJIS[newTag], title: newTitle.trim(), desc: newDesc.trim(), tag: newTag }])
     setNewTitle(''); setNewDesc(''); setActiveTag('all')
   }
 
-  const remove = (act) => setActs(prev => prev.filter(a => a !== act))
+  const remove = async (act) => {
+    await supabase.from('activities').delete().eq('id', act.id)
+  }
 
   return (
     <section className="section" id="itinerary">
@@ -365,8 +386,8 @@ function Activities() {
           ))}
         </div>
         <div className="activity-grid">
-          {filtered.map((a, i) => (
-            <div key={i} className="activity-card">
+          {filtered.map((a) => (
+            <div key={a.id} className="activity-card">
               <button className="ac-remove" onClick={() => remove(a)}>✕</button>
               <span className="ac-emoji">{a.emoji}</span>
               <span className="ac-tag" style={{ background: TAG_COLORS[a.tag] + '22', color: TAG_COLORS[a.tag] }}>{a.tag}</span>
@@ -449,7 +470,7 @@ function Budget() {
 }
 
 // ─── CHAT ─────────────────────────────────────────────────────────────────────
-function Chat({ useMock }) {
+function Chat() {
   const [comments, setComments] = useState([])
   const [author, setAuthor] = useState('')
   const [message, setMessage] = useState('')
@@ -457,33 +478,25 @@ function Chat({ useMock }) {
   const bottomRef = useRef(null)
 
   const fetchComments = async () => {
-    if (useMock) return
     const { data } = await supabase.from('comments').select('*').order('created_at', { ascending: true })
     if (data) setComments(data)
   }
 
   useEffect(() => {
     fetchComments()
-    if (!useMock) {
-      const ch = supabase.channel('comments-ch')
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'comments' }, payload => {
-          setComments(prev => [...prev, payload.new])
-        }).subscribe()
-      return () => supabase.removeChannel(ch)
-    }
-  }, [useMock])
+    const ch = supabase.channel('comments-ch')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'comments' }, payload => {
+        setComments(prev => [...prev, payload.new])
+      }).subscribe()
+    return () => supabase.removeChannel(ch)
+  }, [])
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [comments])
 
   const send = async () => {
     if (!message.trim()) return
     setSubmitting(true)
-    const entry = { author: author.trim() || 'Anonymous', message: message.trim() }
-    if (useMock) {
-      setComments(prev => [...prev, { ...entry, id: Date.now(), created_at: new Date().toISOString() }])
-    } else {
-      await supabase.from('comments').insert([entry])
-    }
+    await supabase.from('comments').insert([{ author: author.trim() || 'Anonymous', message: message.trim() }])
     setMessage(''); setSubmitting(false)
   }
 
@@ -549,7 +562,6 @@ function StickyNav({ active, onNav }) {
 // ─── APP ──────────────────────────────────────────────────────────────────────
 export default function App() {
   const [activeSection, setActiveSection] = useState('hero')
-  const useMock = !import.meta.env.VITE_SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL.includes('your-project')
 
   const navTo = (id) => {
     setActiveSection(id)
@@ -569,11 +581,11 @@ export default function App() {
     <div className="app">
       <StickyNav active={activeSection} onNav={navTo} />
       <Hero onNav={navTo} />
-      <RSVP useMock={useMock} />
-      <Polls useMock={useMock} />
+      <RSVP />
+      <Polls />
       <Activities />
       <Budget />
-      <Chat useMock={useMock} />
+      <Chat />
       <footer className="footer">
         <div className="footer-inner">
           <span>🎰 VegasCrew 2026</span>
