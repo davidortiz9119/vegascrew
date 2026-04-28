@@ -421,7 +421,7 @@ function Activities() {
 
 // ─── BUDGET ───────────────────────────────────────────────────────────────────
 function Budget() {
-  const [nights, setNights] = useState(3)
+  const [nights, setNights] = useState(2)
   const [items, setItems] = useState(BUDGET_ITEMS_DEFAULT.map(i => ({ ...i })))
 
   const update = (idx, val) => setItems(prev => prev.map((item, i) => i === idx ? { ...item, val: Number(val) || 0 } : item))
