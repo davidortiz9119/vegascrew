@@ -6,11 +6,11 @@ const DEFAULT_HOTEL_OPTS = ['The Venetian', 'Bellagio', 'Caesars Palace', 'Resor
 const DEFAULT_WEEKEND_OPTS = ['Feb 14-16', 'Feb 21-23', 'Mar 7-9']
 
 const DEFAULT_ACTIVITIES = [
-  { emoji: '🥊', title: 'UFC / Boxing', desc: 'Check T-Mobile Arena schedule — Vegas fight nights are unmatched', tag: 'sports' },
-  { emoji: '🍽️', title: 'Group Dinner', desc: "Gordon Ramsay Hell's Kitchen, Nobu, or STK for the big night out", tag: 'food' },
-  { emoji: '🎭', title: 'Sphere', desc: "If there's a show, you're going. End of discussion.", tag: 'entertainment' },
-  { emoji: '🏊', title: 'Pool Day', desc: 'Marquee or Wet Republic — day club vibes with the whole crew', tag: 'daytime' },
-  { emoji: '🏌️', title: 'Golf', desc: 'Wynn Golf Club or Rio Secco for the early risers', tag: 'sports' },
+  { emoji: '🥊', title: 'UFC / Boxing', description: 'Check T-Mobile Arena schedule — Vegas fight nights are unmatched', tag: 'sports' },
+  { emoji: '🍽️', title: 'Group Dinner', description: "Gordon Ramsay Hell's Kitchen, Nobu, or STK for the big night out", tag: 'food' },
+  { emoji: '🎭', title: 'Sphere', description: "If there's a show, you're going. End of discussion.", tag: 'entertainment' },
+  { emoji: '🏊', title: 'Pool Day', description: 'Marquee or Wet Republic — day club vibes with the whole crew', tag: 'daytime' },
+  { emoji: '🏌️', title: 'Golf', description: 'Wynn Golf Club or Rio Secco for the early risers', tag: 'sports' },
 ]
 
 const BUDGET_ITEMS_DEFAULT = [
@@ -339,18 +339,13 @@ function Activities() {
 
   const fetchActs = async () => {
     const { data } = await supabase.from('activities').select('*').order('created_at', { ascending: true })
-    if (data && data.length > 0) {
-      setActs(data)
-    } else {
-      const { data: seeded } = await supabase.from('activities').insert(DEFAULT_ACTIVITIES).select()
-      if (seeded) setActs(seeded)
-    }
+    if (data) setActs(data)
   }
 
   useEffect(() => {
     fetchActs()
     const ch = supabase.channel('activities-ch')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'activities' }, fetchActs)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'activities' }, () => fetchActs())
       .subscribe()
     return () => supabase.removeChannel(ch)
   }, [])
@@ -360,12 +355,21 @@ function Activities() {
 
   const addIdea = async () => {
     if (!newTitle.trim()) return
-    await supabase.from('activities').insert([{ emoji: TAG_EMOJIS[newTag], title: newTitle.trim(), desc: newDesc.trim(), tag: newTag }])
-    setNewTitle(''); setNewDesc(''); setActiveTag('all')
+    const { error } = await supabase.from('activities').insert([{
+      emoji: TAG_EMOJIS[newTag] || '✨',
+      title: newTitle.trim(),
+      description: newDesc.trim(),
+      tag: newTag
+    }])
+    if (!error) {
+      setNewTitle(''); setNewDesc(''); setActiveTag('all')
+      await fetchActs()
+    }
   }
 
   const remove = async (act) => {
     await supabase.from('activities').delete().eq('id', act.id)
+    await fetchActs()
   }
 
   return (
@@ -392,7 +396,7 @@ function Activities() {
               <span className="ac-emoji">{a.emoji}</span>
               <span className="ac-tag" style={{ background: TAG_COLORS[a.tag] + '22', color: TAG_COLORS[a.tag] }}>{a.tag}</span>
               <div className="ac-title">{a.title}</div>
-              <div className="ac-desc">{a.desc}</div>
+              <div className="ac-desc">{a.description}</div>
             </div>
           ))}
         </div>
